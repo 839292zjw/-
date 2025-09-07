@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务进度跟踪系统</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#10B981',
+                        warning: '#F59E0B',
+                        danger: '#EF4444',
+                        dark: '#1F2937',
+                        light: '#F9FAFB'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 24px; transition: transform .3s ease, box-shadow .3s ease; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,0,0,0.12); }
+        
+        .task-card { border-left: 5px solid #3B82F6; margin-bottom: 16px; position: relative; overflow: hidden; }
+        .task-card.urgent { border-left: 5px solid #EF4444; animation: pulse 2s infinite; }
+        .task-card.warning { border-left: 5px solid #F59E0B; }
+        .task-card.normal { border-left: 5px solid #3B82F6; }
+        .task-card::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to right, rgba(255,255,255,0.2), rgba(255,255,255,0.05)); pointer-events: none; }
+        
+        .progress-bar { height: 12px; border-radius: 20px; overflow: hidden; background: #E5E7EB; }
+        .progress-fill { height: 100%; border-radius: 20px; background: linear-gradient(90deg, #3B82F6, #60A5FA); transition: width .5s ease; position: relative; }
+        .progress-fill::after { content: ''; position: absolute; inset: 0; background-image: linear-gradient(-45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%, transparent); background-size: 20px 20px; animation: move 1s linear infinite; border-radius: 20px; }
+        @keyframes move { 0%{background-position:0 0;} 100%{background-position:20px 0;} }
+        @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(239,68,68,0.4);} 70%{box-shadow:0 0 0 10px rgba(239,68,68,0);} 100%{box-shadow:0 0 0 0 rgba(239,68,68,0);} }
+        
+        .btn { padding: 10px 20px; border-radius: 8px; font-weight: 500; transition: all .2s ease; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+        .btn i { margin-right: 8px; }
+        .btn-primary{ background:#3B82F6; color:#fff; border:none; } .btn-primary:hover{ background:#2563EB; transform: translateY(-2px); }
+        .btn-danger{ background:#EF4444; color:#fff; border:none; } .btn-danger:hover{ background:#DC2626; transform: translateY(-2px); }
+        .btn-secondary{ background:#10B981; color:#fff; border:none; } .btn-secondary:hover{ background:#059669; transform: translateY(-2px); }
+        
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; visibility: hidden; transition: all .3s ease; }
+        .modal.active { opacity: 1; visibility: visible; }
+        .modal-content { background:#fff; border-radius:12px; width:90%; max-width:720px; max-height:90vh; overflow:hidden; transform: scale(.9); transition: transform .3s ease; box-shadow: 0 10px 30px rgba(0,0,0,.2); display:flex; flex-direction:column; }
+        .modal.active .modal-content{ transform: scale(1); }
+        .modal-body{ overflow-y:auto; }
+        
+        .history-item { border-left: 3px solid #3B82F6; padding: 12px 16px; margin-bottom: 12px; background: #F9FAFB; border-radius: 0 8px 8px 0; }
+        .badge{ padding:4px 10px; border-radius:20px; font-size:12px; font-weight:500; }
+        .badge-primary{ background:#DBEAFE; color:#1E40AF; }
+        .badge-success{ background:#D1FAE5; color:#065F46; }
+        .badge-warning{ background:#FEF3C7; color:#92400E; }
+        .badge-danger{ background:#FEE2E2; color:#B91C1C; }
+        
+        .input-field { width: 100%; padding: 12px 16px; border: 1px solid #D1D5DB; border-radius: 8px; font-size: 16px; transition: border .3s ease; }
+        .input-field:focus { outline: none; border-color: #3B82F6; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+        
+        .fade-in{ animation: fadeIn .5s ease; }
+        @keyframes fadeIn{ from{opacity:0; transform: translateY(20px);} to{opacity:1; transform: translateY(0);} }
+        
+        .notification{ position:fixed; bottom:20px; right:20px; padding:16px 24px; border-radius:8px; color:#fff; box-shadow:0 4px 12px rgba(0,0,0,.15); transform: translateY(100px); opacity:0; transition: all .3s ease; z-index:1001; display:flex; align-items:center; }
+        .notification.show{ transform: translateY(0); opacity:1; }
+        .notification.success{ background:#10B981; } .notification.error{ background:#EF4444; } .notification.info{ background:#3B82F6; } .notification.warning{ background:#F59E0B; }
+        
+        .grid-container{ display:grid; grid-template-columns: repeat(auto-fill,minmax(350px,1fr)); gap:24px; }
+        .tab-container{ display:flex; border-bottom:2px solid #E5E7EB; margin-bottom:20px; }
+        .tab{ padding:12px 24px; cursor:pointer; font-weight:500; color:#6B7280; border-bottom:3px solid transparent; transition: all .3s ease; }
+        .tab.active{ color:#3B82F6; border-bottom:3px solid #3B82F6; }
+        .tab-content{ display:none; } .tab-content.active{ display:block; }
+        @media (max-width:768px){ .grid-container{ grid-template-columns:1fr; } .tab{ padding:8px 16px; font-size:14px; } }
+        
+        .time-info{ display:flex; align-items:center; margin-top:8px; font-size:14px; }
+        .time-info i{ margin-right:6px; width:16px; }
+        .time-info.urgent{ color:#EF4444; font-weight:500; }
+        .time-info.warning{ color:#F59E0B; font-weight:500; }
+        .time-info.normal{ color:#6B7280; }
+        
+        .filter-container{ display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+        .filter-btn{ padding:6px 16px; border-radius:20px; font-size:14px; cursor:pointer; transition:all .2s ease; background:#F3F4F6; border:1px solid #E5E7EB; }
+        .filter-btn.active{ background:#3B82F6; color:#fff; border-color:#3B82F6; }
+        
+        /* 复习进度颜色（1天/7天/30天） */
+        .rev-1d { background: #3B82F6; }   /* 蓝 */
+        .rev-7d { background: #F59E0B; }   /* 橙 */
+        .rev-30d{ background: #10B981; }   /* 绿 */
+        .legend-dot{ width:10px; height:10px; border-radius:9999px; display:inline-block; margin-right:6px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="text-center mb-12 fade-in">
+            <h1 class="text-4xl font-bold text-gray-800 mb-4">任务进度跟踪系统</h1>
+            <p class="text-gray-600 max-w-2xl mx-auto">高效管理您的任务和作业，跟踪完成情况，智能提醒截止日期</p>
+        </header>
+
+        <div class="card fade-in mb-8">
+            <div class="tab-container">
+                <div class="tab active" data-tab="task">任务管理</div>
+                <div class="tab" data-tab="homework">作业管理</div>
+                <div class="tab" data-tab="stats">统计概览</div>
+            </div>
+            
+            <!-- 任务管理内容 -->
+            <div class="tab-content active" id="task-content">
+                <div class="grid-container">
+                    <div class="card fade-in">
+                        <h2 class="text-xl font-semibold mb-6 flex items-center">
+                            <i class="fas fa-plus-circle text-primary mr-3"></i>添加新任务
+                        </h2>
+                        <form id="addTaskForm">
+                            <div class="mb-5">
+                                <label for="taskName" class="block text-gray-700 mb-2 font-medium">任务名称</label>
+                                <input type="text" id="taskName" class="input-field" placeholder="例如：阅读书籍" required>
+                            </div>
+                            <div class="mb-5">
+                                <label for="totalAmount" class="block text-gray-700 mb-2 font-medium">总目标</label>
+                                <input type="number" id="totalAmount" class="input-field" placeholder="例如：300" min="1" required>
+                            </div>
+                            <div class="mb-5">
+                                <label for="unit" class="block text-gray-700 mb-2 font-medium">单位</label>
+                                <input type="text" id="unit" class="input-field" placeholder="例如：页" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-full">
+                                <i class="fas fa-save"></i>创建任务
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="card fade-in">
+                        <h2 class="text-xl font-semibold mb-6 flex items-center">
+                            <i class="fas fa-chart-pie text-primary mr-3"></i>任务统计
+                        </h2>
+                        <div class="flex justify-between mb-8">
+                            <div class="text-center">
+                                <div class="text-3xl font-bold text-primary" id="totalTasks">0</div>
+                                <div class="text-gray-600 mt-1">总任务</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-3xl font-bold text-secondary" id="completedTasks">0</div>
+                                <div class="text-gray-600 mt-1">已完成</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-3xl font-bold text-warning" id="inProgressTasks">0</div>
+                                <div class="text-gray-600 mt-1">进行中</div>
+                            </div>
+                        </div>
+                        <div class="bg-light rounded-lg p-4">
+                            <h3 class="font-medium text-gray-700 mb-3">进度分布</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <div class="flex justify-between mb-1">
+                                        <span class="text-gray-600">已完成任务</span>
+                                        <span class="text-gray-600" id="completedPercent">0%</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="completedProgress" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between mb-1">
+                                        <span class="text-gray-600">进行中任务</span>
+                                        <span class="text-gray-600" id="inProgressPercent">0%</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="inProgressProgress" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card fade-in mt-6">
+                    <h2 class="text-xl font-semibold mb-6 flex items-center">
+                        <i class="fas fa-tasks text-primary mr-3"></i>任务列表
+                    </h2>
+                    <div class="filter-container">
+                        <div class="filter-btn active" data-filter="all">全部</div>
+                        <div class="filter-btn" data-filter="completed">已完成</div>
+                        <div class="filter-btn" data-filter="inprogress">进行中</div>
+                        <div class="filter-btn" data-filter="outdated">需更新</div>
+                    </div>
+                    <div id="taskList" class="space-y-4">
+                        <div class="text-center py-10 text-gray-500" id="emptyState">
+                            <i class="fas fa-folder-open text-4xl opacity-30 mb-3"></i>
+                            <p>还没有任务，点击上方"添加新任务"开始吧</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 作业管理内容 -->
+            <div class="tab-content" id="homework-content">
+                <div class="grid-container">
+                    <div class="card fade-in">
+                        <h2 class="text-xl font-semibold mb-6 flex items-center">
+                            <i class="fas fa-book text-primary mr-3"></i>添加新作业
+                        </h2>
+                        <form id="addHomeworkForm">
+                            <div class="mb-5">
+                                <label for="homeworkName" class="block text-gray-700 mb-2 font-medium">作业名称</label>
+                                <input type="text" id="homeworkName" class="input-field" placeholder="例如：数学作业" required>
+                            </div>
+                            <div class="mb-5">
+                                <label for="subject" class="block text-gray-700 mb-2 font-medium">科目</label>
+                                <input type="text" id="subject" class="input-field" placeholder="例如：数学" required>
+                            </div>
+                            <div class="mb-5">
+                                <label for="dueDate" class="block text-gray-700 mb-2 font-medium">截止日期</label>
+                                <input type="date" id="dueDate" class="input-field" required>
+                            </div>
+                            <div class="mb-5">
+                                <label for="description" class="block text-gray-700 mb-2 font-medium">作业描述（可选）</label>
+                                <textarea id="description" class="input-field" rows="3" placeholder="作业的详细要求..."></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-full">
+                                <i class="fas fa-save"></i>添加作业
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="card fade-in">
+                        <h2 class="text-xl font-semibold mb-6 flex items-center">
+                            <i class="fas fa-chart-bar text-primary mr-3"></i>作业统计
+                        </h2>
+                        <div class="flex justify-between mb-8">
+                            <div class="text-center">
+                                <div class="text-3xl font-bold text-primary" id="totalHomeworks">0</div>
+                                <div class="text-gray-600 mt-1">总作业</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-3xl font-bold text-secondary" id="completedHomeworks">0</div>
+                                <div class="text-gray-600 mt-1">已完成</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-3xl font-bold text-warning" id="pendingHomeworks">0</div>
+                                <div class="text-gray-600 mt-1">待完成</div>
+                            </div>
+                        </div>
+                        <div class="bg-light rounded-lg p-4">
+                            <h3 class="font-medium text-gray-700 mb-4">紧急作业</h3>
+                            <div id="urgentHomeworksList">
+                                <p class="text-gray-500 text-center">暂无紧急作业</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card fade-in mt-6">
+                    <h2 class="text-xl font-semibold mb-6 flex items-center">
+                        <i class="fas fa-clipboard-list text-primary mr-3"></i>作业列表
+                    </h2>
+                    <div class="filter-container">
+                        <div class="filter-btn active" data-filter="all">全部</div>
+                        <div class="filter-btn" data-filter="completed">已完成</div>
+                        <div class="filter-btn" data-filter="pending">待完成</div>
+                        <div class="filter-btn" data-filter="urgent">紧急</div>
+                    </div>
+                    <div id="homeworkList" class="space-y-4">
+                        <div class="text-center py-10 text-gray-500" id="emptyHomeworkState">
+                            <i class="fas fa-book-open text-4xl opacity-30 mb-3"></i>
+                            <p>还没有作业，点击上方"添加新作业"开始吧</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 统计概览内容 -->
+            <div class="tab-content" id="stats-content">
+                <div class="grid-container">
+                    <div class="card fade-in">
+                        <h2 class="text-xl font-semibold mb-6 flex items-center">
+                            <i class="fas fa-chart-line text-primary mr-3"></i>学习概览
+                        </h2>
+                        <div class="bg-light rounded-lg p-4 mb-6">
+                            <h3 class="font-medium text-gray-700 mb-4">完成情况</h3>
+                            <div class="flex justify-between mb-3">
+                                <span class="text-gray-600">任务完成率</span>
+                                <span class="font-semibold" id="taskCompletionRate">0%</span>
+                            </div>
+                            <div class="progress-bar mb-4">
+                                <div class="progress-fill" id="taskCompletionBar" style="width: 0%"></div>
+                            </div>
+                            <div class="flex justify-between mb-3">
+                                <span class="text-gray-600">作业完成率</span>
+                                <span class="font-semibold" id="homeworkCompletionRate">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="homeworkCompletionBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card fade-in">
+                        <h2 class="text-xl font-semibold mb-6 flex items-center">
+                            <i class="fas fa-bell text-primary mr-3"></i>提醒与通知
+                        </h2>
+                        <div class="bg-light rounded-lg p-4">
+                            <h3 class="font-medium text-gray-700 mb-4">即将到期</h3>
+                            <div id="dueSoonList">
+                                <p class="text-gray-500 text-center">暂无即将到期的项目</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card fade-in">
+                        <h2 class="text-xl font-semibold mb-6 flex items-center">
+                            <i class="fas fa-history text-primary mr-3"></i>最近活动
+                        </h2>
+                        <div class="bg-light rounded-lg p-4">
+                            <div id="recentActivities">
+                                <p class="text-gray-500 text-center">暂无最近活动</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 任务详情模态框 -->
+    <div class="modal" id="taskDetailModal">
+        <div class="modal-content">
+            <div class="p-6 border-b">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xl font-bold text-gray-800" id="modalTaskName"></h3>
+                    <button class="text-gray-500 hover:text-gray-700" id="closeDetailModal">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <p class="text-gray-600 mt-2" id="modalTaskInfo"></p>
+            </div>
+            <div class="p-6 modal-body">
+                <h4 class="font-semibold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-history text-primary mr-2"></i>进度更新历史
+                </h4>
+                <div id="updateHistory" class="space-y-3"></div>
+                
+                <div class="mt-8 pt-4 border-t">
+                    <h4 class="font-semibold text-gray-800 mb-3">更新当前进度</h4>
+                    <div class="flex gap-2">
+                        <div class="flex-1">
+                            <input type="number" id="modalCurrentValue" class="input-field" placeholder="输入当前进度">
+                        </div>
+                        <button id="modalUpdateBtn" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i>更新
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-8 pt-4 border-t">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="font-semibold text-gray-800">复习进度</h4>
+                        <div class="text-xs text-gray-500 flex items-center gap-3">
+                            <span><i class="legend-dot" style="background:#3B82F6;"></i>1天</span>
+                            <span><i class="legend-dot" style="background:#F59E0B;"></i>7天</span>
+                            <span><i class="legend-dot" style="background:#10B981;"></i>30天</span>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between mb-1 text-sm">
+                                <span class="text-gray-600">1天</span>
+                                <span id="reviewPct1" class="text-gray-700">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div id="reviewBar1" class="progress-fill rev-1d" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1 text-sm">
+                                <span class="text-gray-600">7天</span>
+                                <span id="reviewPct2" class="text-gray-700">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div id="reviewBar2" class="progress-fill rev-7d" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1 text-sm">
+                                <span class="text-gray-600">30天</span>
+                                <span id="reviewPct3" class="text-gray-700">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div id="reviewBar3" class="progress-fill rev-30d" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 bg-gray-50 flex justify-end gap-2 rounded-b-lg">
+                <button id="detailDeleteBtn" class="btn btn-danger">
+                    <i class="fas fa-trash"></i>删除任务
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 作业详情模态框 -->
+    <div class="modal" id="homeworkDetailModal">
+        <div class="modal-content">
+            <div class="p-6 border-b">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xl font-bold text-gray-800" id="modalHomeworkName"></h3>
+                    <button class="text-gray-500 hover:text-gray-700" id="closeHomeworkModal">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <p class="text-gray-600 mt-2" id="modalHomeworkInfo"></p>
+            </div>
+            <div class="p-6 modal-body">
+                <div class="mb-4">
+                    <h4 class="font-semibold text-gray-800 mb-2">作业详情</h4>
+                    <p id="modalHomeworkDescription" class="text-gray-600"></p>
+                </div>
+                
+                <div class="mb-4">
+                    <h4 class="font-semibold text-gray-800 mb-2">完成状态</h4>
+                    <div class="flex items-center">
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" id="homeworkCompleted" class="form-checkbox h-5 w-5 text-primary">
+                            <span class="ml-2 text-gray-700">标记为已完成</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 bg-gray-50 flex justify-end gap-2 rounded-b-lg">
+                <button id="homeworkDeleteBtn" class="btn btn-danger">
+                    <i class="fas fa-trash"></i>删除作业
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 删除确认模态框 -->
+    <div class="modal" id="deleteConfirmModal">
+        <div class="modal-content">
+            <div class="p-6 border-b">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xl font-bold text-danger flex items-center">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>确认删除
+                    </h3>
+                    <button class="text-gray-500 hover:text-gray-700" id="closeDeleteModal">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <p class="text-gray-600 mt-2">此操作不可撤销，请确认您要删除以下项目</p>
+            </div>
+
+            <div class="p-6 modal-body">
+                <div class="task-info-card">
+                    <div class="flex flex-col gap-3">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">名称：</span>
+                            <span id="deleteItemName" class="font-medium text-gray-800"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">类型：</span>
+                            <span id="deleteItemType" class="text-gray-800"></span>
+                        </div>
+                        <div id="deleteItemExtraInfo"></div>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <label for="deleteReason" class="block text-gray-700 mb-2 font-medium">删除理由（可选）</label>
+                    <textarea id="deleteReason" class="input-field h-20 resize-none" placeholder="例如：任务已完成/任务不再需要..."></textarea>
+                </div>
+            </div>
+
+            <div class="p-4 bg-gray-50 flex justify-end gap-3 rounded-b-lg">
+                <button class="btn btn-outline" id="cancelDeleteBtn">
+                    <i class="fas fa-times"></i>取消
+                </button>
+                <button class="btn btn-danger" id="confirmDeleteBtn">
+                    <i class="fas fa-trash"></i>确认删除
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tasks = JSON.parse(localStorage.getItem('tasks')) || [];
+        let homeworks = JSON.parse(localStorage.getItem('homeworks')) || [];
+        let currentItemId = null;
+        let currentItemType = null;
+        let currentFilter = 'all';
+
+        const elements = {
+            addTaskForm: document.getElementById('addTaskForm'),
+            addHomeworkForm: document.getElementById('addHomeworkForm'),
+            taskList: document.getElementById('taskList'),
+            homeworkList: document.getElementById('homeworkList'),
+            emptyState: document.getElementById('emptyState'),
+            emptyHomeworkState: document.getElementById('emptyHomeworkState'),
+            totalTasks: document.getElementById('totalTasks'),
+            completedTasks: document.getElementById('completedTasks'),
+            inProgressTasks: document.getElementById('inProgressTasks'),
+            completedPercent: document.getElementById('completedPercent'),
+            inProgressPercent: document.getElementById('inProgressPercent'),
+            completedProgress: document.getElementById('completedProgress'),
+            inProgressProgress: document.getElementById('inProgressProgress'),
+            totalHomeworks: document.getElementById('totalHomeworks'),
+            completedHomeworks: document.getElementById('completedHomeworks'),
+            pendingHomeworks: document.getElementById('pendingHomeworks'),
+            urgentHomeworksList: document.getElementById('urgentHomeworksList'),
+            taskCompletionRate: document.getElementById('taskCompletionRate'),
+            homeworkCompletionRate: document.getElementById('homeworkCompletionRate'),
+            taskCompletionBar: document.getElementById('taskCompletionBar'),
+            homeworkCompletionBar: document.getElementById('homeworkCompletionBar'),
+            dueSoonList: document.getElementById('dueSoonList'),
+            recentActivities: document.getElementById('recentActivities'),
+            taskDetailModal: document.getElementById('taskDetailModal'),
+            closeDetailModal: document.getElementById('closeDetailModal'),
+            modalTaskName: document.getElementById('modalTaskName'),
+            modalTaskInfo: document.getElementById('modalTaskInfo'),
+            updateHistory: document.getElementById('updateHistory'),
+            modalCurrentValue: document.getElementById('modalCurrentValue'),
+            modalUpdateBtn: document.getElementById('modalUpdateBtn'),
+            detailDeleteBtn: document.getElementById('detailDeleteBtn'),
+            homeworkDetailModal: document.getElementById('homeworkDetailModal'),
+            closeHomeworkModal: document.getElementById('closeHomeworkModal'),
+            modalHomeworkName: document.getElementById('modalHomeworkName'),
+            modalHomeworkInfo: document.getElementById('modalHomeworkInfo'),
+            modalHomeworkDescription: document.getElementById('modalHomeworkDescription'),
+            homeworkCompleted: document.getElementById('homeworkCompleted'),
+            homeworkDeleteBtn: document.getElementById('homeworkDeleteBtn'),
+            deleteConfirmModal: document.getElementById('deleteConfirmModal'),
+            closeDeleteModal: document.getElementById('closeDeleteModal'),
+            cancelDeleteBtn: document.getElementById('cancelDeleteBtn'),
+            confirmDeleteBtn: document.getElementById('confirmDeleteBtn'),
+            deleteItemName: document.getElementById('deleteItemName'),
+            deleteItemType: document.getElementById('deleteItemType'),
+            deleteItemExtraInfo: document.getElementById('deleteItemExtraInfo'),
+            deleteReason: document.getElementById('deleteReason'),
+            tabs: document.querySelectorAll('.tab'),
+            tabContents: document.querySelectorAll('.tab-content'),
+            filterBtns: document.querySelectorAll('.filter-btn')
+        };
+
+        function init() {
+            tasks.forEach(t => { ensureTaskReview(t); });
+            saveData();
+            updateStats();
+            renderTasks();
+            renderHomeworks();
+            bindEvents();
+            checkDeadlines();
+        }
+
+        function bindEvents() {
+            elements.addTaskForm.addEventListener('submit', handleAddTask);
+            elements.addHomeworkForm.addEventListener('submit', handleAddHomework);
+            elements.closeDetailModal.addEventListener('click', closeModal);
+            elements.modalUpdateBtn.addEventListener('click', handleUpdateProgress);
+            elements.detailDeleteBtn.addEventListener('click', () => { if (currentItemId) openDeleteConfirm(currentItemId, 'task'); });
+            elements.closeHomeworkModal.addEventListener('click', closeModal);
+            elements.homeworkCompleted.addEventListener('change', handleHomeworkCompleted);
+            elements.homeworkDeleteBtn.addEventListener('click', () => { if (currentItemId) openDeleteConfirm(currentItemId, 'homework'); });
+            elements.closeDeleteModal.addEventListener('click', closeModal);
+            elements.cancelDeleteBtn.addEventListener('click', closeModal);
+            elements.confirmDeleteBtn.addEventListener('click', performDelete);
+            document.querySelectorAll('.modal').forEach(modal => { modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); }); });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+            elements.tabs.forEach(tab => { tab.addEventListener('click', () => { const tabId = tab.getAttribute('data-tab'); switchTab(tabId); }); });
+            elements.filterBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    elements.filterBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentFilter = btn.getAttribute('data-filter');
+                    if (document.getElementById('task-content').classList.contains('active')) renderTasks(); else renderHomeworks();
+                });
+            });
+        }
+
+        function switchTab(tabId) {
+            elements.tabs.forEach(tab => { tab.getAttribute('data-tab') === tabId ? tab.classList.add('active') : tab.classList.remove('active'); });
+            elements.tabContents.forEach(c => { c.id === `${tabId}-content` ? c.classList.add('active') : c.classList.remove('active'); });
+            elements.filterBtns.forEach(b => { b.getAttribute('data-filter') === 'all' ? b.classList.add('active') : b.classList.remove('active'); });
+            currentFilter = 'all';
+            updateStats();
+        }
+
+        function handleAddTask(e) {
+            e.preventDefault();
+            const taskName = document.getElementById('taskName').value.trim();
+            const totalAmount = parseInt(document.getElementById('totalAmount').value);
+            const unit = document.getElementById('unit').value.trim();
+            if (taskName && !isNaN(totalAmount) && totalAmount > 0 && unit) {
+                const now = new Date();
+                const newTask = {
+                    id: Date.now().toString(),
+                    name: taskName,
+                    total: totalAmount,
+                    current: 0,
+                    unit: unit,
+                    createdAt: now.toISOString(),
+                    lastUpdated: now.toISOString(),
+                    history: [{ time: now.toISOString(), value: 0, note: "任务创建", change: 0 }],
+                    review: { r1: 0, r2: 0, r3: 0 }
+                };
+                tasks.push(newTask);
+                saveData(); updateStats(); renderTasks(); elements.addTaskForm.reset();
+                showNotification('任务创建成功！', 'success');
+            } else showNotification('请填写所有必填字段', 'error');
+        }
+
+        function handleAddHomework(e) {
+            e.preventDefault();
+            const name = document.getElementById('homeworkName').value.trim();
+            const subject = document.getElementById('subject').value.trim();
+            const dueDate = document.getElementById('dueDate').value;
+            const description = document.getElementById('description').value.trim();
+            if (name && subject && dueDate) {
+                const now = new Date();
+                const hw = { id: Date.now().toString(), name, subject, dueDate, description: description || "暂无描述", completed: false, createdAt: now.toISOString() };
+                homeworks.push(hw);
+                saveData(); updateStats(); renderHomeworks(); elements.addHomeworkForm.reset();
+                showNotification('作业添加成功！', 'success');
+            } else showNotification('请填写所有必填字段', 'error');
+        }
+
+        function renderTasks() {
+            elements.taskList.innerHTML = '';
+            if (tasks.length === 0) { elements.taskList.appendChild(elements.emptyState); return; }
+            const sorted = [...tasks].sort((a,b)=> new Date(b.lastUpdated) - new Date(a.lastUpdated));
+            let filtered = sorted;
+            if (currentFilter==='completed') filtered = sorted.filter(t => Math.min(Math.round((t.current/t.total)*100),100)===100);
+            else if (currentFilter==='inprogress') filtered = sorted.filter(t => Math.min(Math.round((t.current/t.total)*100),100)<100);
+            else if (currentFilter==='outdated') filtered = sorted.filter(t => Math.floor((new Date()-new Date(t.lastUpdated))/(1000*60*60*24))>=7);
+            if (filtered.length===0){ elements.taskList.innerHTML = `<div class="text-center py-10 text-gray-500"><i class="fas fa-search text-4xl opacity-30 mb-3"></i><p>没有找到符合筛选条件的任务</p></div>`; return; }
+            filtered.forEach(t=> elements.taskList.appendChild(createTaskCard(t)));
+        }
+
+        function createTaskCard(task) {
+            const percentage = Math.min(Math.round((task.current / task.total) * 100), 100);
+            const isCompleted = percentage === 100;
+            const lastUpdated = new Date(task.lastUpdated);
+            const days = Math.floor((new Date() - lastUpdated) / (1000*60*60*24));
+            let cardStyle = 'normal'; if (days>=7) cardStyle='urgent'; else if (days>=3) cardStyle='warning';
+            let progressColor = 'background: linear-gradient(90deg,#3B82F6,#60A5FA);';
+            if (percentage > 75) progressColor = 'background: linear-gradient(90deg,#10B981,#34D399);';
+            else if (percentage > 50) progressColor = 'background: linear-gradient(90deg,#22C55E,#86EFAC);';
+            else if (percentage > 25) progressColor = 'background: linear-gradient(90deg,#F59E0B,#FBBF24);';
+            const card = document.createElement('div');
+            card.className = `task-card card ${cardStyle}`;
+            card.dataset.id = task.id;
+            const timeInfoClass = days>=7?'urgent':(days>=3?'warning':'normal');
+            const timeInfoText = days>=3?`已${days}天未更新`:`最近更新: ${formatDate(lastUpdated)}`;
+            card.innerHTML = `
+                <div class="flex justify-between items-start mb-4">
+                    <h3 class="text-lg font-semibold ${isCompleted ? 'line-through text-gray-500' : 'text-gray-800'}">
+                        ${task.name}
+                        ${isCompleted ? '<span class="ml-2 badge badge-success">已完成</span>' : ''}
+                    </h3>
+                    <button class="delete-btn text-gray-400 hover:text-danger transition-colors" title="删除任务" data-id="${task.id}">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+                <div class="mb-4">
+                    <div class="flex justify_between text-sm mb-2">
+                        <span class="text-gray-600">进度</span>
+                        <span class="font-medium">${task.current} / ${task.total} ${task.unit} (${percentage}%)</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width:${percentage}%; ${progressColor}"></div>
+                    </div>
+                </div>
+                <div class="time-info ${timeInfoClass}">
+                    <i class="fas fa-clock"></i>
+                    <span>${timeInfoText}</span>
+                </div>
+                <div class="flex gap-2 mt-4">
+                    <div class="flex-1">
+                        <input type="number" class="update-current input-field" placeholder="更新进度" min="0" max="${task.total}" value="${task.current}">
+                    </div>
+                    <button class="btn btn-secondary update-task" data-id="${task.id}">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="btn btn-primary view-details" data-id="${task.id}">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+            `;
+            card.querySelector('.delete-btn').addEventListener('click', (e)=>{ e.stopPropagation(); openDeleteConfirm(task.id,'task'); });
+            const inputField = card.querySelector('.update-current');
+            card.querySelector('.update-task').addEventListener('click', (e)=>{ e.stopPropagation(); updateTaskProgress(task.id, parseInt(inputField.value)||0); });
+            inputField.addEventListener('keypress', (e)=>{ if(e.key==='Enter'){ updateTaskProgress(task.id, parseInt(inputField.value)||0);} });
+            card.querySelector('.view-details').addEventListener('click',(e)=>{ e.stopPropagation(); openTaskDetail(task.id); });
+            card.addEventListener('click',(e)=>{ if(!e.target.matches('button') && !e.target.matches('input')) openTaskDetail(task.id); });
+            return card;
+        }
+
+        function renderHomeworks() {
+            elements.homeworkList.innerHTML = '';
+            elements.urgentHomeworksList.innerHTML = '';
+            if (homeworks.length===0){ elements.homeworkList.appendChild(elements.emptyHomeworkState); elements.urgentHomeworksList.innerHTML='<p class="text-gray-500 text-center">暂无紧急作业</p>'; return; }
+            const sorted = [...homeworks].sort((a,b)=> endOfDay(a.dueDate)-endOfDay(b.dueDate));
+            let filtered = sorted;
+            if (currentFilter==='completed') filtered = sorted.filter(h=>h.completed);
+            else if (currentFilter==='pending') filtered = sorted.filter(h=>!h.completed);
+            else if (currentFilter==='urgent') filtered = sorted.filter(h=>{ if(h.completed) return false; const d=Math.ceil((endOfDay(h.dueDate)-new Date())/(1000*60*60*24)); return d<=1 && d>=0; });
+            if (filtered.length===0){ elements.homeworkList.innerHTML = `<div class="text-center py-10 text-gray-500"><i class="fas fa-search text-4xl opacity-30 mb-3"></i><p>没有找到符合筛选条件的作业</p></div>`; return; }
+            let urgentCount=0;
+            filtered.forEach(h=>{
+                elements.homeworkList.appendChild(createHomeworkCard(h));
+                const d=Math.ceil((endOfDay(h.dueDate)-new Date())/(1000*60*60*24));
+                if(d<=1 && d>=0 && !h.completed){
+                    urgentCount++;
+                    const item=document.createElement('div');
+                    item.className='bg-red-50 p-3 rounded-lg mb-2';
+                    item.innerHTML=`<div class="flex justify-between items-center"><span class="font-medium text-red-800">${h.name}</span><span class="text-red-600 text-sm">${formatDaysRemaining(h.dueDate)}后截止</span></div><div class="text-red-600 text-sm mt-1">${h.subject}</div>`;
+                    elements.urgentHomeworksList.appendChild(item);
+                }
+            });
+            if(urgentCount===0 && currentFilter==='all') elements.urgentHomeworksList.innerHTML='<p class="text-gray-500 text-center">暂无紧急作业</p>';
+        }
+
+        function createHomeworkCard(homework) {
+            const dueDate=endOfDay(homework.dueDate), now=new Date(), diff=dueDate-now, days=Math.ceil(diff/(1000*60*60*24));
+            let cardStyle='normal', timeClass='normal', timeText='';
+            if(homework.completed){ timeText='已完成'; }
+            else if(diff<0){ cardStyle='urgent'; timeClass='urgent'; timeText='已过期'; }
+            else if(days<=1){ cardStyle='urgent'; timeClass='urgent'; timeText=`${formatDaysRemaining(homework.dueDate)}后截止`; }
+            else if(days<=3){ cardStyle='warning'; timeClass='warning'; timeText=`${days}天后截止`; }
+            else { timeText=`${days}天后截止`; }
+            const card=document.createElement('div'); card.className=`task-card card ${cardStyle}`; card.dataset.id=homework.id;
+            card.innerHTML=`
+                <div class="flex justify-between items-start mb-4">
+                    <h3 class="text-lg font-semibold ${homework.completed?'line-through text-gray-500':'text-gray-800'}">${homework.name}${homework.completed?'<span class="ml-2 badge badge-success">已完成</span>':''}</h3>
+                    <button class="delete-btn text-gray-400 hover:text-danger transition-colors" title="删除作业" data-id="${homework.id}">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+                <div class="mb-3"><span class="badge badge-primary">${homework.subject}</span></div>
+                <div class="mb-3 text-gray-600 text-sm">${homework.description}</div>
+                <div class="time-info ${timeClass}">
+                    <i class="fas fa-clock"></i><span>${timeText}</span>
+                </div>
+                <div class="flex gap-2 mt-4">
+                    <button class="btn btn-primary view-details flex-1" data-id="${homework.id}">
+                        <i class="fas fa-eye"></i>查看详情
+                    </button>
+                </div>`;
+            card.querySelector('.delete-btn').addEventListener('click',(e)=>{ e.stopPropagation(); openDeleteConfirm(homework.id,'homework'); });
+            card.querySelector('.view-details').addEventListener('click',(e)=>{ e.stopPropagation(); openHomeworkDetail(homework.id); });
+            return card;
+        }
+
+        function openDeleteConfirm(itemId, itemType){
+            let item = itemType==='task'? tasks.find(t=>t.id===itemId) : homeworks.find(h=>h.id===itemId);
+            if(!item){ showNotification('未找到该项目','error'); return; }
+            currentItemId=itemId; currentItemType=itemType;
+            document.getElementById('deleteItemName').textContent=item.name;
+            document.getElementById('deleteItemType').textContent=itemType==='task'?'任务':'作业';
+            const extra=document.getElementById('deleteItemExtraInfo'); extra.innerHTML='';
+            if(itemType==='task'){
+                const pct=Math.min(Math.round((item.current/item.total)*100),100);
+                extra.innerHTML=`<div class="flex justify-between"><span class="text-gray-600">进度：</span><span class="text-gray-800">${item.current} / ${item.total} ${item.unit} (${pct}%)</span></div>`;
+            }else{
+                const d=new Date(item.dueDate);
+                extra.innerHTML=`<div class="flex justify-between"><span class="text-gray-600">科目：</span><span class="text-gray-800">${item.subject}</span></div><div class="flex justify-between"><span class="text-gray-600">截止日期：</span><span class="text-gray-800">${formatDate(d)}</span></div>`;
+            }
+            document.getElementById('deleteReason').value='';
+            showModal(document.getElementById('deleteConfirmModal'));
+        }
+
+        function performDelete(){
+            if(!currentItemId || !currentItemType) return;
+            let name='';
+            if(currentItemType==='task'){
+                const i=tasks.findIndex(t=>t.id===currentItemId); if(i===-1){ showNotification('删除失败：未找到该任务','error'); closeModal(); return; }
+                name=tasks[i].name; tasks.splice(i,1);
+            }else{
+                const i=homeworks.findIndex(h=>h.id===currentItemId); if(i===-1){ showNotification('删除失败：未找到该作业','error'); closeModal(); return; }
+                name=homeworks[i].name; homeworks.splice(i,1);
+            }
+            saveData(); updateStats(); renderTasks(); renderHomeworks(); closeModal();
+            const reason=document.getElementById('deleteReason').value.trim();
+            showNotification(reason?`"${name}"已删除（理由：${reason}）`:`"${name}"已删除`,'info');
+            currentItemId=null; currentItemType=null;
+        }
+
+        function openTaskDetail(taskId){
+            const task=tasks.find(t=>t.id===taskId); if(!task) return;
+            currentItemId=taskId;
+            const pct=Math.min(Math.round((task.current/task.total)*100),100);
+            elements.modalTaskName.textContent=task.name;
+            elements.modalTaskInfo.innerHTML=`总目标: ${task.total} ${task.unit} | 当前进度: ${task.current} ${task.unit} (${pct}%) | 最后更新: ${formatDate(new Date(task.lastUpdated))}`;
+            elements.modalCurrentValue.value=task.current; elements.modalCurrentValue.max=task.total;
+            renderTaskHistory(taskId);
+            ensureTaskReview(task); renderReviewBars(task);
+            showModal(elements.taskDetailModal);
+        }
+
+        function openHomeworkDetail(homeworkId){
+            const h=homeworks.find(x=>x.id===homeworkId); if(!h) return;
+            currentItemId=homeworkId;
+            elements.modalHomeworkName.textContent=h.name;
+            elements.modalHomeworkInfo.innerHTML=`科目: ${h.subject} | 截止日期: ${formatDate(new Date(h.dueDate))} | 状态: ${h.completed?'已完成':'未完成'}`;
+            elements.modalHomeworkDescription.textContent=h.description;
+            elements.homeworkCompleted.checked=h.completed;
+            showModal(elements.homeworkDetailModal);
+        }
+
+        function handleHomeworkCompleted(){
+            if(!currentItemId) return;
+            const i=homeworks.findIndex(h=>h.id===currentItemId); if(i===-1) return;
+            homeworks[i].completed=elements.homeworkCompleted.checked;
+            homeworks[i].updatedAt=new Date().toISOString();
+            saveData(); updateStats(); renderHomeworks();
+            showNotification(elements.homeworkCompleted.checked?'作业标记为已完成':'作业标记为未完成','info');
+        }
+
+        function renderTaskHistory(taskId){
+            const task=tasks.find(t=>t.id===taskId); if(!task) return;
+            elements.updateHistory.innerHTML='';
+            const hist=[...task.history].reverse();
+            hist.forEach((r,idx)=>{
+                const it=document.createElement('div'); it.className='history-item';
+                const d=new Date(r.time), fd=formatDate(d), ft=d.toLocaleTimeString();
+                let change='';
+                if(idx>0){ const pv=hist[idx-1].value, c=r.value-pv; if(c!==0){ const cls=c>0?'badge-success':'badge-danger', icon=c>0?'fa-arrow-up':'fa-arrow-down'; change=`<span class="badge ${cls} ml-2"><i class="fas ${icon} mr-1"></i>${Math.abs(c)}</span>`; } }
+                it.innerHTML=`<div class="flex justify-between items-start"><div class="flex-1"><p class="text-sm font-medium text-gray-800 flex items-center">${r.note} ${change}</p><p class="text-xs text-gray-500 mt-1">${fd} ${ft}</p></div><span class="font-semibold">${r.value} ${task.unit}</span></div>`;
+                elements.updateHistory.appendChild(it);
+            });
+            if(hist.length===0){ elements.updateHistory.innerHTML = `<div class="text-center py-4 text-gray-500"><i class="fas fa-history text-3xl mb-2 opacity-30"></i><p>暂无更新记录</p></div>`; }
+        }
+
+        function handleUpdateProgress(){ if(currentItemId){ const v=parseInt(elements.modalCurrentValue.value)||0; updateTaskProgress(currentItemId,v); } }
+
+        function updateTaskProgress(taskId,newCurrent,note="进度更新"){
+            const i=tasks.findIndex(t=>t.id===taskId); if(i===-1) return;
+            const clamped=Math.min(Math.max(newCurrent,0),tasks[i].total);
+            if(tasks[i].current!==clamped){
+                const now=new Date(), old=tasks[i].current, change=clamped-old;
+                tasks[i].current=clamped; tasks[i].lastUpdated=now.toISOString();
+                tasks[i].history.push({ time: now.toISOString(), value: clamped, note, change });
+                saveData(); updateStats(); renderTasks();
+                if(currentItemId===taskId && elements.taskDetailModal.classList.contains('active')) openTaskDetail(taskId);
+                const done=clamped===tasks[i].total;
+                showNotification(done?'恭喜！任务已完成！':'进度已更新', done?'success':'info');
+            }
+        }
+
+        function updateStats(){
+            const tt=tasks.length, tc=tasks.filter(t=>Math.min(Math.round((t.current/t.total)*100),100)===100).length, tp=tt-tc;
+            elements.totalTasks.textContent=tt; elements.completedTasks.textContent=tc; elements.inProgressTasks.textContent=tp;
+            const pc=tt>0?Math.round((tc/tt)*100):0, pp=tt>0?Math.round((tp/tt)*100):0;
+            elements.completedPercent.textContent=`${pc}%`; elements.inProgressPercent.textContent=`${pp}%`;
+            elements.completedProgress.style.width=`${pc}%`; elements.inProgressProgress.style.width=`${pp}%`;
+            const th=homeworks.length, ch=homeworks.filter(h=>h.completed).length, ph=th-ch;
+            document.getElementById('totalHomeworks').textContent=th; document.getElementById('completedHomeworks').textContent=ch; document.getElementById('pendingHomeworks').textContent=ph;
+            const tr=th>0?Math.round((ch/th)*100):0;
+            document.getElementById('taskCompletionRate').textContent=`${pc}%`;
+            document.getElementById('homeworkCompletionRate').textContent=`${tr}%`;
+            document.getElementById('taskCompletionBar').style.width=`${pc}%`;
+            document.getElementById('homeworkCompletionBar').style.width=`${tr}%`;
+            updateDueSoonList(); updateRecentActivities();
+        }
+
+        function updateDueSoonList(){
+            elements.dueSoonList.innerHTML='';
+            const dueSoon=homeworks.filter(h=>{ if(h.completed) return false; const d=Math.ceil((endOfDay(h.dueDate)-new Date())/(1000*60*60*24)); return d<=3 && d>=0; });
+            const outdated=tasks.filter(t=>Math.floor((new Date()-new Date(t.lastUpdated))/(1000*60*60*24))>=7);
+            if(dueSoon.length===0 && outdated.length===0){ elements.dueSoonList.innerHTML='<p class="text-gray-500 text-center">暂无即将到期的项目</p>'; return; }
+            dueSoon.forEach(h=>{
+                const it=document.createElement('div'); it.className='bg-yellow-50 p-3 rounded-lg mb-2';
+                it.innerHTML=`<div class="flex justify-between items-center"><span class="font-medium text-yellow-800">${h.name}</span><span class="text-yellow-600 text-sm">${formatDaysRemaining(h.dueDate)}后截止</span></div><div class="text-yellow-600 text-sm mt-1">作业 - ${h.subject}</div>`;
+                elements.dueSoonList.appendChild(it);
+            });
+            outdated.forEach(t=>{
+                const days=Math.floor((new Date()-new Date(t.lastUpdated))/(1000*60*60*24));
+                const it=document.createElement('div'); it.className='bg-red-50 p-3 rounded-lg mb-2';
+                it.innerHTML=`<div class="flex justify-between items-center"><span class="font-medium text-red-800">${t.name}</span><span class="text-red-600 text-sm">${days}天未更新</span></div><div class="text-red-600 text-sm mt-1">任务</div>`;
+                elements.dueSoonList.appendChild(it);
+            });
+        }
+
+        function updateRecentActivities(){
+            elements.recentActivities.innerHTML=''; let acts=[];
+            tasks.forEach(t=> t.history.forEach(r=> acts.push({type:'task',name:t.name,time:new Date(r.time),action:r.note,value:r.value})));
+            homeworks.forEach(h=>{
+                acts.push({type:'homework',name:h.name,time:new Date(h.createdAt),action:'作业创建',subject:h.subject});
+                if(h.completed) acts.push({type:'homework',name:h.name,time:new Date(h.updatedAt||h.createdAt),action:'作业完成',subject:h.subject});
+            });
+            acts.sort((a,b)=>b.time-a.time); const list=acts.slice(0,5);
+            if(list.length===0){ elements.recentActivities.innerHTML='<p class="text-gray-500 text-center">暂无最近活动</p>'; return; }
+            list.forEach(a=>{
+                const d=document.createElement('div'); d.className='p-3 border-b border-gray-100 last:border-0';
+                const txt=a.type==='task'?`任务"${a.name}"${a.action==='任务创建'?'已创建':`进度更新: ${a.value}`}`:`作业"${a.name}"${a.action.toLowerCase()}`;
+                d.innerHTML=`<p class="text-sm text-gray-800">${txt}</p><p class="text-xs text-gray-500 mt-1">${formatDateTime(a.time)}</p>`;
+                elements.recentActivities.appendChild(d);
+            });
+        }
+
+        function checkDeadlines(){
+            const now=new Date();
+            homeworks.forEach(h=>{
+                if(h.completed) return;
+                const d=Math.ceil((endOfDay(h.dueDate)-now)/(1000*60*60*24));
+                if(d<=1 && d>0) showNotification(`作业"${h.name}"将于${formatDaysRemaining(h.dueDate)}后截止`,'warning');
+                else if(endOfDay(h.dueDate)-now<0) showNotification(`作业"${h.name}"已过期`,'error');
+            });
+            tasks.forEach(t=>{
+                const days=Math.floor((now-new Date(t.lastUpdated))/(1000*60*60*24));
+                if(days>=7) showNotification(`任务"${t.name}"已${days}天未更新`,'warning');
+            });
+        }
+
+        function showModal(m){ m.classList.add('active'); document.body.style.overflow='hidden'; }
+        function closeModal(){ document.querySelectorAll('.modal').forEach(m=>m.classList.remove('active')); document.body.style.overflow='auto'; currentItemId=null; currentItemType=null; }
+        function saveData(){ localStorage.setItem('tasks',JSON.stringify(tasks)); localStorage.setItem('homeworks',JSON.stringify(homeworks)); }
+
+        function formatDate(d){ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
+        function formatDateTime(d){ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0'), h=String(d.getHours()).padStart(2,'0'), mm=String(d.getMinutes()).padStart(2,'0'); return `${y}-${m}-${day} ${h}:${mm}`; }
+        function endOfDay(s){ const d=new Date(s); d.setHours(23,59,59,999); return d; }
+        function formatDaysRemaining(s){ const now=new Date(), due=endOfDay(s); const diff=Math.ceil((due-now)/(1000*60*60*24)); if(diff<0) return '已过期'; if(diff===0) return '今天'; if(diff===1) return '明天'; return `${diff}天`; }
+        function showNotification(msg,type='info'){ document.querySelectorAll('.notification').forEach(n=>document.body.contains(n)&&document.body.removeChild(n)); const n=document.createElement('div'); n.className=`notification ${type}`; n.innerHTML=`<i class="fas ${type==='success'?'fa-check-circle':type==='error'?'fa-exclamation-circle':type==='warning'?'fa-exclamation-triangle':'fa-info-circle'} mr-2"></i>${msg}`; document.body.appendChild(n); setTimeout(()=>n.classList.add('show'),10); setTimeout(()=>{ n.classList.remove('show'); setTimeout(()=>document.body.contains(n)&&document.body.removeChild(n),300); },5000); }
+
+        function ensureTaskReview(task){ if(!task.review) task.review={ r1:0, r2:0, r3:0 }; }
+        function renderReviewBars(task){
+            ensureTaskReview(task);
+            const total=Math.max(1,task.total);
+            const p1=Math.min(100,Math.round((task.review.r1/total)*100));
+            const p2=Math.min(100,Math.round((task.review.r2/total)*100));
+            const p3=Math.min(100,Math.round((task.review.r3/total)*100));
+            const b1=document.getElementById('reviewBar1'), b2=document.getElementById('reviewBar2'), b3=document.getElementById('reviewBar3');
+            const t1=document.getElementById('reviewPct1'), t2=document.getElementById('reviewPct2'), t3=document.getElementById('reviewPct3');
+            if(b1) b1.style.width=p1+'%'; if(b2) b2.style.width=p2+'%'; if(b3) b3.style.width=p3+'%';
+            if(t1) t1.textContent=p1+'%'; if(t2) t2.textContent=p2+'%'; if(t3) t3.textContent=p3+'%';
+        }
+
+        document.addEventListener('DOMContentLoaded', function(){
+            init();
+            setInterval(checkDeadlines, 30*60*1000);
+        });
+    </script>
+</body>
+</html>
